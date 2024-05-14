@@ -1,0 +1,21 @@
+Object Segmentation
+Ground Removal
+Euclidean Clustering
+Voxel filter - Method of downsampling point clouds
+
+
+Cone Detection
+    1. pre-processing
+        Field of View trimming
+        data correction (possible distortion)
+        ground removal
+
+    2. Cone Detection
+        Clustering
+        Reconstruction
+        Cone legality verification
+
+    3. (Colour Estimation)
+        intensity analysis
+        camera vision analysis
+        

@@ -1,0 +1,7 @@
+.vscode
+.venv
+.envrc
+
+__pycache__
+
+samples
