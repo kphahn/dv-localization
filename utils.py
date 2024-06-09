@@ -1,9 +1,9 @@
 from argparse import ArgumentParser
 from pathlib import Path
 import plotly.graph_objects as go
+import plotly.io as pio
 import numpy as np
 import h5py
-import plotly.io as pio
 import open3d as o3d
 
 pio.templates.default = "plotly_dark"

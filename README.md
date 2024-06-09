@@ -8,4 +8,4 @@ This project is under development. Dependencies and source code may change a lot
 Current dependencies:
 - Python3.11
     - packages listed in `requirements.txt`
-- Samples generated with [fakeScenes](https://github.com/Chalmers-Formula-Student/fakeScenes)
+- Datasets generated with [fakeScenes](https://github.com/Chalmers-Formula-Student/fakeScenes)
