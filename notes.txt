@@ -19,3 +19,8 @@ Cone Detection
         intensity analysis
         camera vision analysis
         
+
+Challenges:
+    choosing a reasonable epsilon for the dbscan method proves difficult, as the distance to noise is unknown.
+    There is, however, an expected number of points per cone - depending on distance an lidar setup
+
