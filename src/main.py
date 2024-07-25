@@ -2,20 +2,69 @@ import open3d as o3d
 import numpy as np
 import copy
 import time
+from argparse import ArgumentParser
 
 import utils
 
-# ifdef statements
-DYNAMIC_VISUALIZATION = False
-STATIC_VISUALIZATION = True
-VISUALIZE_POSES = False
-VISUALIZE_EDGES = True
-
-
-DATASET_PATH = "Datasets/track_s42"
-TRACK = "s42"
-
 if __name__ == "__main__":
+
+    # Initialization
+    parser = ArgumentParser()
+    parser.add_argument(
+        "-f",
+        "--first",
+        default=False,
+        help="Only show first frame and quit",
+    )
+    parser.add_argument(
+        "-n",
+        "--noise",
+        default=False,
+        help="Use frames with noise",
+    )
+    parser.add_argument(
+        "-v",
+        "--visualize",
+        default=True,
+        help="Visualize the pose graph after all node are added",
+    )
+    parser.add_argument(
+        "-d",
+        "--dynamic",
+        default=False,
+        help="Visualize the pose graph dynamically (update every time a node was added)",
+    )
+    parser.add_argument(
+        "-e",
+        "--edges",
+        default=True,
+        help="Show every edge",
+    )
+    parser.add_argument(
+        "-p",
+        "--poses",
+        default=False,
+        help="Show the orientation of each pose",
+    )
+    parser.add_argument(
+        "dataset_path",
+        type=str,
+        help="Path to track dataset",
+    )
+    args = parser.parse_args()
+
+    VISUALIZE = args.visualize
+    DYNAMIC = args.dynamic
+    SHOW_EDGES = args.edges
+    SHOW_POSES = args.poses
+    NOISE = args.noise
+
+    DATASET_PATH = args.dataset_path
+
+    if args.first:
+        pcd = utils.load_dataset(DATASET_PATH, limit=1, noise=NOISE)
+        utils.draw(pcd)
+        exit()
 
     node_types = []
     edge_types = []
@@ -23,7 +72,7 @@ if __name__ == "__main__":
     # load lidar frames
     lidar_frames = [
         utils.preprocess_frame(frame)
-        for frame in utils.load_dataset(DATASET_PATH, limit=None)
+        for frame in utils.load_dataset(DATASET_PATH, noise=NOISE)
     ]
     lidar_frames[0].paint_uniform_color([0, 1, 0])
     lidar_frames[len(lidar_frames) - 1].paint_uniform_color([1, 0, 0])
@@ -33,7 +82,7 @@ if __name__ == "__main__":
     relative_transform = np.eye(4)
 
     ### (VISUAL) ### dynamic
-    if DYNAMIC_VISUALIZATION:
+    if DYNAMIC:
         pose_graph_dyn = copy.deepcopy(lidar_frames)
         poses = o3d.geometry.TriangleMesh.create_coordinate_frame()
         edges = o3d.geometry.LineSet()
@@ -133,19 +182,19 @@ if __name__ == "__main__":
             edge_types.append(utils.EDGE_TYPE.LOOP_CLOSURE)
 
         ### (VISUAL) ### dynamic
-        if DYNAMIC_VISUALIZATION:
+        if DYNAMIC:
             pose_graph_dyn[idx].transform(pose_graph.nodes[idx_current_pose].pose)
             pose_graph_dyn[idx].paint_uniform_color([0, 0, 0])
             vis.add_geometry(pose_graph_dyn[idx])
 
-            if VISUALIZE_POSES:
+            if SHOW_POSES:
                 pose = o3d.geometry.TriangleMesh.create_coordinate_frame()
                 pose.transform(pose_graph.nodes[idx_current_pose].pose)
                 poses = poses + pose
 
                 vis.add_geometry(poses)
 
-            if VISUALIZE_EDGES:
+            if SHOW_EDGES:
                 point = np.asarray(pose_graph.nodes[idx_current_pose].pose[:3, 3])
                 edges.points.append(point)
 
@@ -166,11 +215,11 @@ if __name__ == "__main__":
             time.sleep(0.1)
 
     ### (VISUAL) ### dynamic
-    if DYNAMIC_VISUALIZATION:
+    if DYNAMIC:
         vis.destroy_window()
 
     ### (VISUAL) ### static
-    if STATIC_VISUALIZATION or DYNAMIC_VISUALIZATION:
+    if VISUALIZE or DYNAMIC:
         utils.draw(
             utils.generate_static_visualization(
                 lidar_frames,
@@ -195,7 +244,7 @@ if __name__ == "__main__":
     )
 
     ### (VISUAL) ### static
-    if STATIC_VISUALIZATION or DYNAMIC_VISUALIZATION:
+    if VISUALIZE or DYNAMIC:
         utils.draw(
             utils.generate_static_visualization(
                 lidar_frames,

@@ -74,36 +74,31 @@ def correct_frame(path_to_transform, frame):
     return frame.transform(T_inv)
 
 
-def load_dataset(dataset_path, limit=None):
+def load_dataset(dataset_path, noise=False, limit=None):
 
-    if limit:
-        n = limit
+    limit = limit if limit else len(os.listdir(dataset_path)) / 2
+    print(
+        f"Loading Dataset track_{dataset_path.rsplit('_', 1)[1]} with {limit} pointcloud(s). {noise=}"
+    )
 
-    else:
-        n = int(len(os.listdir(f"{dataset_path}/pointclouds")) / 2)
-    print(f"Loading Dataset with {n} pointclouds")  # exclude frames with noise
+    pcd_path = lambda i: f"{dataset_path}/pointclouds/cloud_frame_{i}.ply"
+    tfm_path = lambda i: f"{dataset_path}/transformations/transformation_{i}.csv"
+
+    if noise:
+        pcd_path = lambda i: f"{dataset_path}/pointclouds/cloud_frame_{i}_noise.ply"
 
     pcds = []
 
-    for i in tqdm(range(0, n, FRAME_DIVIDER)):
+    for i in tqdm(range(0, limit, FRAME_DIVIDER)):
 
-        if os.path.exists(f"{dataset_path}/pointclouds/cloud_frame_{i}.ply"):
-            try:
-                frame = o3d.io.read_point_cloud(
-                    f"{dataset_path}/pointclouds/cloud_frame_{i}.ply"
-                )
+        try:
+            frame = o3d.io.read_point_cloud(pcd_path(i))
+            frame = correct_frame(tfm_path(i), frame)
 
-                frame = correct_frame(
-                    f"{dataset_path}/transformations/transformation_{i}.csv",
-                    frame,
-                )
+            pcds.append(frame)
 
-                pcds.append(frame)
-
-            except FileNotFoundError:
-                print(f"FileNotFoundError with frame {i}")
-
-        else:
+        except FileNotFoundError as e:
+            print(e)
             break
 
     return pcds
