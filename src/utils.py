@@ -76,7 +76,7 @@ def correct_frame(path_to_transform, frame):
 
 def load_dataset(dataset_path, noise=False, limit=None):
 
-    limit = limit if limit else len(os.listdir(dataset_path)) / 2
+    limit = limit if limit else int(len(os.listdir(f"{dataset_path}/pointclouds")) / 2)
     print(
         f"Loading Dataset track_{dataset_path.rsplit('_', 1)[1]} with {limit} pointcloud(s). {noise=}"
     )

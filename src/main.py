@@ -139,27 +139,27 @@ if __name__ == "__main__":
             edge_types.append(utils.EDGE_TYPE.ODOMETRY)
 
         # register landmarks
-        cone_coordinates = np.asarray(current_frame.points)
-        for idx_cone, coord in enumerate(cone_coordinates):
-            relative_cone_transform = np.eye(4)
-            relative_cone_transform[:3, 3] = coord
-            global_cone_transform = (
-                pose_graph.nodes[idx_current_pose].pose @ relative_cone_transform
-            )
+        # cone_coordinates = np.asarray(current_frame.points)
+        # for idx_cone, coord in enumerate(cone_coordinates):
+        #     relative_cone_transform = np.eye(4)
+        #     relative_cone_transform[:3, 3] = coord
+        #     global_cone_transform = (
+        #         pose_graph.nodes[idx_current_pose].pose @ relative_cone_transform
+        #     )
 
-            pose_graph.nodes.append(
-                o3d.pipelines.registration.PoseGraphNode(global_cone_transform)
-            )
-            node_types.append(utils.NODE_TYPE.LANDMARK)
+        #     pose_graph.nodes.append(
+        #         o3d.pipelines.registration.PoseGraphNode(global_cone_transform)
+        #     )
+        #     node_types.append(utils.NODE_TYPE.LANDMARK)
 
-            edge_cone_to_pose = o3d.pipelines.registration.PoseGraphEdge(
-                source_node_id=idx_current_pose + idx_cone + 1,
-                target_node_id=idx_current_pose,
-                transformation=relative_cone_transform,
-                uncertain=True,
-            )
-            pose_graph.edges.append(edge_cone_to_pose)
-            edge_types.append(utils.EDGE_TYPE.OBSERVATION)
+        #     edge_cone_to_pose = o3d.pipelines.registration.PoseGraphEdge(
+        #         source_node_id=idx_current_pose + idx_cone + 1,
+        #         target_node_id=idx_current_pose,
+        #         transformation=relative_cone_transform,
+        #         uncertain=True,
+        #     )
+        #     pose_graph.edges.append(edge_cone_to_pose)
+        #     edge_types.append(utils.EDGE_TYPE.OBSERVATION)
 
         # register loop closure
         if idx == len(lidar_frames) - 1:
