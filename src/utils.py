@@ -1,6 +1,18 @@
 import open3d as o3d
 import numpy as np
 import copy
+import os
+
+
+def load_dataset(dataset_path):
+
+    directory = os.listdir(dataset_path)
+    dataset = []
+
+    for file in directory:
+        dataset.append(o3d.io.read_point_cloud(os.path.join(dataset_path, file)))
+
+    return dataset
 
 
 def generate_colors(n):
@@ -12,11 +24,6 @@ def generate_colors(n):
         colors.append(color)
 
     return colors
-
-
-def frame_feeder(dataset):
-    for frame in dataset:
-        yield frame
 
 
 def draw(pointclouds):

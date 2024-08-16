@@ -200,4 +200,16 @@ def load_ground_truth(dataset_path):
         + labels["big_cones"].paint_uniform_color(np.asarray([1, 0.65, 0]))
     )
 
+    rotation_matrix = np.array(
+        [
+            [0, -1, 0, 0],
+            [1, 0, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1],
+        ]
+    )
+
+    ground_truth_pcd.transform(rotation_matrix)
+    ground_truth_coords.transform(rotation_matrix)
+
     return ground_truth_pcd, ground_truth_coords

@@ -53,6 +53,8 @@ Graph errors due to measurement errors:
 - correspondence set (icp registration) -> error
 - pose graph typically used on smaller maps like rooms
 
+- problems when using real data: spread of points to large. Either single lines get registered as individual cone or multiple cones get identified as one. Too few cones properly detectable to conduct icp registration. sophisticated cone detection required
+
 Initial guess is required for icp registration. However, since start/finish line is distinct, initial guess is relatively simple to implement
 
 ### Association mechanisms:

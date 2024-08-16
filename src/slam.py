@@ -2,15 +2,28 @@ import open3d as o3d
 import numpy as np
 import time
 
+import utils
+import copy
 
-def associate_landmarks(new_landmarks, known_landmarks, initial_transform):
+
+def associate_landmarks(new_landmarks, known_landmarks, initial_transform, idx):
 
     icp_result = o3d.pipelines.registration.registration_icp(
         new_landmarks,
         known_landmarks,
-        1,
+        0.5,
         initial_transform,
     )
+
+    # if idx == 443:
+    #     utils.draw(
+    #         [
+    #             copy.deepcopy(new_landmarks)
+    #             .paint_uniform_color(np.asarray([1, 0, 0]))
+    #             .transform(icp_result.transformation),
+    #             known_landmarks,
+    #         ]
+    #     )
 
     # end_time = time.time()
     # print(f"estimate_odometry runtime: {end_time - start_time:.4f} seconds")
@@ -90,7 +103,7 @@ class PoseGraph(o3d.pipelines.registration.PoseGraph):
                 idx_source_node=self.idxs_poses[-2],
                 idx_target_node=self.idxs_poses[-1],
                 transformation=relative_transform,
-                uncertain=True,
+                uncertain=False,
             )
 
         else:
@@ -99,11 +112,16 @@ class PoseGraph(o3d.pipelines.registration.PoseGraph):
             self.map.points.append(global_transform[:3, 3])
             self.map.colors.append(color)
 
+            # ignore rotational information for landmark edges
+            information = np.eye(6)
+            information[:3, :3] = 0
+
             self.add_edge(
                 idx_source_node=self.idxs_poses[-1],
                 idx_target_node=self.idxs_landmarks[-1],
                 transformation=relative_transform,
-                uncertain=True,
+                uncertain=False,
+                information=information,
             )
 
         # end_time = time.time()
@@ -115,6 +133,7 @@ class PoseGraph(o3d.pipelines.registration.PoseGraph):
         idx_target_node,
         transformation,
         uncertain,
+        information=np.eye(6),
         color=np.asarray([0, 0, 0]),
     ):
 
@@ -126,6 +145,7 @@ class PoseGraph(o3d.pipelines.registration.PoseGraph):
                 source_node_id=idx_target_node,
                 target_node_id=idx_source_node,
                 transformation=transformation,
+                information=information,
                 uncertain=uncertain,
             )
         )
@@ -135,25 +155,6 @@ class PoseGraph(o3d.pipelines.registration.PoseGraph):
 
         # end_time = time.time()
         # print(f"add_edge runtime: {end_time - start_time:.4f} seconds")
-
-    def add_loop_closure(
-        self,
-        idx_source_node,
-        idx_target_node,
-    ):
-
-        T_source = self.nodes[idx_source_node].pose
-        T_target = self.nodes[idx_target_node].pose
-
-        T_relative = T_target @ np.linalg.inv(T_source)
-
-        self.add_edge(
-            idx_source_node,
-            idx_target_node,
-            T_relative,
-            False,
-            np.asarray([1, 0, 0]),
-        )
 
     def opitimize(self):
 
@@ -174,74 +175,34 @@ class PoseGraph(o3d.pipelines.registration.PoseGraph):
 
         print(self.nodes[self.idxs_poses[-1]].pose)
 
-        # self._update_map()
-        self._update_path()
-
     def get_map(self):
 
-        map_points = [self.nodes[idx].pose[:3, 3] for idx in self.idxs_landmarks]
-        map = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(map_points))
+        map_points = [
+            np.asarray(self.nodes[idx].pose[:3, 3]) for idx in self.idxs_landmarks
+        ]
+        self.map.points = o3d.utility.Vector3dVector(map_points)
 
-        return map
+        return self.map
 
     def get_path(self):
 
         path_points = [
             np.asarray(self.nodes[idx].pose[:3, 3]) for idx in self.idxs_poses
         ]
-        path = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(path_points))
-        path.paint_uniform_color(np.asarray([1, 0, 0]))
 
-        return path
+        self.path.points = o3d.utility.Vector3dVector(path_points)
 
-    # frames = copy.deepcopy(frames)
-    # poses = o3d.geometry.TriangleMesh.create_coordinate_frame()
-    # edges = o3d.geometry.LineSet()
-    # path = o3d.geometry.PointCloud()
+        return self.path
 
-    # for idx, frame in enumerate(frames):
+    def get_lines(self):
 
-    #     idx_current_pose = pose_graph.idxs_poses[idx]
-    #     pose_transform = pose_graph.nodes[idx_current_pose].pose
+        points = [
+            np.asarray(self.nodes[idx].pose[:3, 3]) for idx in range(len(self.nodes))
+        ]
 
-    #     frame.transform(pose_transform)
+        self.lines.points = o3d.utility.Vector3dVector(points)
 
-    #     if visualize_poses:
-    #         pose = o3d.geometry.TriangleMesh.create_coordinate_frame()
-    #         pose.transform(pose_transform)
-    #         poses = poses + pose
-
-    #     if visualize_edges:
-    #         point = np.asarray(pose_transform[:3, 3])
-    #         edges.points.append(point)
-
-    #         path.points.append(point)
-    #         path.colors.append([1, 0.65, 0])
-
-    #         if idx > 0:
-    #             edges.lines.append([idx - 1, idx])
-    #             edges.colors.append([0, 0, 0])
-
-    #         if idx == len(frames) - 1:
-    #             edges.lines.append([idx, 0])
-    #             edges.colors.append([1, 0, 0])
-
-    # pointcloud = []
-
-    # if len(show_frames):
-    #     for n in show_frames:
-    #         pointcloud.append(frames[n])
-    # else:
-    #     pointcloud = frames
-
-    # if visualize_poses:
-    #     pointcloud.append(poses)
-
-    # if visualize_edges:
-    #     pointcloud.append(edges)
-    #     pointcloud.append(path)
-
-    # return pointcloud
+        return self.lines
 
     def visualize(
         self,
@@ -253,18 +214,13 @@ class PoseGraph(o3d.pipelines.registration.PoseGraph):
         visual_set = []
 
         if show_map:
-            map_points = [
-                np.asarray(self.nodes[idx].pose[:3, 3]) for idx in self.idxs_landmarks
-            ]
-            map = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(map_points))
-
-            visual_set.append(map)
+            visual_set.append(self.get_map())
 
         if show_path:
             visual_set.append(self.get_path())
 
-        if show_edges and len(self.lines.lines):
-            visual_set.append(self.lines)
+        if show_edges and len(self.edges):
+            visual_set.append(self.get_lines())
 
         o3d.visualization.draw(
             visual_set,
