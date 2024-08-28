@@ -48,7 +48,7 @@ def get_cone_coordinates(frame, min_detection_points, true_coordinates):
     # detect cones
     cones = detect_cones(frame, min_detection_points)
 
-    # derive cone positions from center and set z = 0
+    # derive cone positions from center and palce on ground
     coordinates = o3d.utility.Vector3dVector([cone.get_center() for cone in cones])
     for coord in coordinates:
         coord[2] = 0
