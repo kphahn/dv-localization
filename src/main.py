@@ -27,7 +27,7 @@ if __name__ == "__main__":
     DATASET_PATH = args.dataset_path
 
     # load dataset
-    lidar_dataset, relative_labels = fake_scenes.load_relative_frames(
+    lidar_dataset = fake_scenes.load_relative_frames(
         DATASET_PATH, divider=1, noise=args.noise
     )
 
