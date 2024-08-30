@@ -169,7 +169,7 @@ def load_relative_frames(
         perspective="local",
     )
 
-    return pointclouds, labels
+    return pointclouds
 
 
 def load_ground_truth(dataset_path):

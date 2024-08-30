@@ -2,6 +2,63 @@ import open3d as o3d
 import numpy as np
 import copy
 import os
+from sensor_msgs.msg import PointCloud2, PointField
+
+
+def convert_o3d_to_ros(self, frame):
+
+    points = np.asarray(frame.points)
+    fields = [
+        PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
+        PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
+        PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+    ]
+
+    time = self.get_clock().now().to_msg()
+    pointcloud_msg = PointCloud2()
+    pointcloud_msg.header.stamp = time
+    pointcloud_msg.header.frame_id = str(
+        self.frame_count
+    )  # field misused to identify number of frame in dataset
+    pointcloud_msg.height = 1
+    pointcloud_msg.width = points.shape[0]
+    pointcloud_msg.fields = fields
+    pointcloud_msg.is_bigendian = False
+    pointcloud_msg.point_step = 12  # 3 * 4 bytes (float32)
+    pointcloud_msg.row_step = pointcloud_msg.point_step * points.shape[0]
+    pointcloud_msg.is_dense = True
+    pointcloud_msg.data = np.asarray(points, np.float32).tobytes()
+
+    return pointcloud_msg
+
+
+def convert_ros_to_o3d(self, pointcloud_msg):
+
+    # Extract fields from the PointCloud2 message
+    dtype_list = []
+    for field in pointcloud_msg.fields:
+        if field.datatype == PointField.FLOAT32:
+            dtype_list.append((field.name, np.float32))
+        else:
+            raise NotImplementedError(
+                f"Field {field.name} with datatype {field.datatype} not implemented"
+            )
+
+    # Convert the raw data to a structured NumPy array
+    pointcloud_array = np.frombuffer(pointcloud_msg.data, dtype=np.dtype(dtype_list))
+    points = np.vstack(
+        [
+            pointcloud_array["x"],
+            pointcloud_array["y"],
+            pointcloud_array["z"],
+        ]
+    ).T
+
+    # Create Open3D point cloud
+    cloud = o3d.geometry.PointCloud()
+    cloud.points = o3d.utility.Vector3dVector(points)
+
+    return cloud
 
 
 def load_dataset(dataset_path):
@@ -15,9 +72,10 @@ def load_dataset(dataset_path):
     return dataset
 
 
-def generate_colors(n):
+def generate_colors(n, seed=None):
     colors = []
-    np.random.seed(1)
+    if seed is not None:
+        np.random.seed(seed)
 
     for _ in range(n):
         color = np.random.random(size=3)
