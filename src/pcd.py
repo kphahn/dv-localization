@@ -52,9 +52,15 @@ def filter_clusters(clusters):
     cones = []
 
     for cluster in clusters:
+
         bb = cluster.get_axis_aligned_bounding_box()
-        if bb.get_extent()[2] > 0.1:
-            cones.append(cluster)
+        height = bb.get_extent()[2]
+
+        if height > 0.325:
+            cones.append((cluster, "big_cone"))
+
+        elif height > 0.1:
+            cones.append((cluster, "small_cone"))
 
     return cones
 
@@ -62,13 +68,19 @@ def filter_clusters(clusters):
 def get_cone_coordinates(cones):
 
     # derive cone positions from highest point of cluster and place on ground
-    coordinates = []
-    for cone in cones:
+    coordinates = o3d.geometry.PointCloud()
+
+    for cone, kind in cones:
         points = np.asarray(cone.points)
         max_z_index = np.argmax(points[:, 2])
-        highest_point = points[max_z_index]
-        highest_point[2] = 0
+        center = points[max_z_index]
+        center[2] = 0
 
-        coordinates.append(highest_point)
+        coordinates.points.append(center)
 
-    return o3d.geometry.PointCloud(o3d.utility.Vector3dVector(coordinates))
+        # if kind == "big_cone":
+        #     coordinates.colors.append(np.asarray([1, 0.3, 0]))
+        # else:
+        #     coordinates.colors.append(np.asarray([0, 0, 0]))
+
+    return coordinates

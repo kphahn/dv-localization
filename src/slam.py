@@ -3,9 +3,6 @@ import numpy as np
 
 import utils
 
-count = 720
-glob_count = 0
-
 
 def associate_landmarks(
     new_landmarks,
@@ -16,7 +13,7 @@ def associate_landmarks(
     icp_result = o3d.pipelines.registration.registration_icp(
         new_landmarks,
         known_landmarks,
-        0.5,
+        0.285,
         initial_transform,
     )
 
@@ -28,6 +25,9 @@ def estimate_odometry(
     target_frame,
     initial_transform,
 ):
+
+    if source_frame == None or target_frame == None:
+        return np.eye(4)
 
     icp_result = o3d.pipelines.registration.registration_icp(
         source_frame,
@@ -68,6 +68,7 @@ def optimize_pose_graph(pose_graph):
         for i in range(max_label + 1)
     ]
 
+    # new_pose_graph = PoseGraph(np.eye(4))
     new_pose_graph = PoseGraph(pose_graph.current_pose)
     new_pose_graph.previous_frame = pose_graph.previous_frame
 
@@ -83,8 +84,7 @@ def optimize_pose_graph(pose_graph):
         new_pose_graph.lines.points.append(np.asarray(position[:3, 3]))
 
         new_pose_graph.map.points.append(position[:3, 3])
-        new_pose_graph.map.colors.append(np.asarray([0, 0, 0]))
-        # new_pose_graph.add_pose(position, landmark=True)
+        # new_pose_graph.map.colors.append(np.asarray([0, 0, 0]))
 
     color = utils.generate_colors(1)[0]
     previous_path = pose_graph.get_path().paint_uniform_color(np.asarray(color))
@@ -170,7 +170,6 @@ class PoseGraph(o3d.pipelines.registration.PoseGraph):
         transformation,
         uncertain,
         information=np.eye(6),
-        color=np.asarray([0, 0, 0]),
     ):
 
         # edges need to be created "backwards", due to how open3d library is implemented
@@ -185,7 +184,6 @@ class PoseGraph(o3d.pipelines.registration.PoseGraph):
         )
 
         self.lines.lines.append([idx_source_node, idx_target_node])
-        self.lines.colors.append(color)
 
     def opitimize(self):
 
