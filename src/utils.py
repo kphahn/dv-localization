@@ -2,7 +2,24 @@ import open3d as o3d
 import numpy as np
 import copy
 import os
-from sensor_msgs.msg import PointCloud2, PointField
+from sensor_msgs.msg import PointCloud2, PointField, ChannelFloat32
+
+
+def convert_matrix_to_ros(name, data):
+
+    channel_msg = ChannelFloat32()
+    channel_msg.name = name
+    channel_msg.values = data.flatten().tolist()
+
+    return channel_msg
+
+
+def convert_ros_to_matrix(msg, shape):
+
+    flat_array = np.array(msg.values, dtype=np.float32)
+    array = flat_array.reshape(shape)
+
+    return array
 
 
 def convert_o3d_to_ros(self, frame):
@@ -78,7 +95,8 @@ def generate_colors(n, seed=None):
         np.random.seed(seed)
 
     for _ in range(n):
-        color = np.random.random(size=3)
+        # Generate a dark color by limiting the random values to a range (e.g., 0 to 0.5)
+        color = np.random.random(size=3) * 0.5
         colors.append(color)
 
     return colors

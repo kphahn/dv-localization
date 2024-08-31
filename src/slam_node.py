@@ -1,9 +1,11 @@
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointCloud2, ChannelFloat32
 import numpy as np
+import open3d as o3d
 
 import slam
+import pcd
 import utils
 
 
@@ -18,7 +20,8 @@ class PointCloudSubscriber(Node):
         self.odometry = np.eye(4)
         self.frame_count = 0
 
-        self.publisher_loc_ = self.create_publisher(PointCloud2, "location_topic", 10)
+        self.publisher_loc_ = self.create_publisher(ChannelFloat32, "loc_topic", 10)
+        self.publisher_odo_ = self.create_publisher(ChannelFloat32, "odo_topic", 10)
         self.publisher_map_ = self.create_publisher(PointCloud2, "map_topic", 10)
 
     def listener_callback(self, msg):
@@ -28,29 +31,32 @@ class PointCloudSubscriber(Node):
 
         frame = utils.convert_ros_to_o3d(self, msg)
 
-        # self.frame_count = idx
-        # frame = msg
-
         self.update_pose_graph(frame)
 
-        # self.publisher_loc_.publish(self.pose_graph.get_loc())
+        if self.frame_count % 50:
+            self.pose_graph, previous_path = slam.optimize_pose_graph(self.pose_graph)
 
-        # if self.frame_count % 50:
+        # self.publisher_loc_.publish(
+        #     utils.convert_matrix_to_ros(
+        #         "current_location", self.pose_graph.current_pose
+        #     )
+        # )
 
-        self.pose_graph, previous_path = slam.optimize_pose_graph(self.pose_graph)
+        map_update = self.pose_graph.get_map()
+        map_update.points.append(self.pose_graph.get_path().points[-1])
 
-        self.publisher_map_.publish(
-            utils.convert_o3d_to_ros(self, self.pose_graph.get_map())
-        )
-
-        # self.frame_count = 0
+        self.publisher_map_.publish(utils.convert_o3d_to_ros(self, map_update))
 
     def update_pose_graph(self, frame):
 
         self.get_logger().info(f"Processing...")
 
         # PREPROCESS FRAME
-        cone_coordinates = slam.get_cone_coordinates(frame, 10)
+        frame_preprocessed = pcd.preprocess_frame(frame)
+        frame_without_ground = pcd.remove_ground(frame_preprocessed, 2)
+        clusters = pcd.extract_clusters(frame_without_ground, 10)
+        cones = pcd.filter_clusters(clusters)
+        cone_coordinates = pcd.get_cone_coordinates(cones)
 
         # REGISTER LOOP CLOSURES
         known_landmarks = []
@@ -58,7 +64,7 @@ class PointCloudSubscriber(Node):
         if self.pose_graph.previous_frame is not None:
 
             self.odometry = slam.estimate_odometry(
-                cone_coordinates, self.pose_graph.previous_frame, 1.5, self.odometry
+                cone_coordinates, self.pose_graph.previous_frame, self.odometry
             )
 
             self.pose_graph.add_pose(self.odometry)
@@ -81,10 +87,10 @@ class PointCloudSubscriber(Node):
                 information = np.eye(6)
                 information[:3, :3] = 0
 
-                if self.pose_graph.map.colors[map_idx][1] == 0.3:
-                    color = np.asarray([1, 0, 0])
-                else:
-                    color = np.asarray([0, 0, 0])
+                # if self.pose_graph.map.colors[map_idx][1] == 0.3:
+                #     color = np.asarray([1, 0, 0])
+                # else:
+                #     color = np.asarray([0, 0, 0])
 
                 self.pose_graph.add_edge(
                     self.pose_graph.idxs_poses[-1],
@@ -92,7 +98,7 @@ class PointCloudSubscriber(Node):
                     transformation,
                     False,
                     information=information,
-                    color=color,
+                    # color=color,
                 )
 
                 known_landmarks.append(frame_idx)
@@ -107,7 +113,7 @@ class PointCloudSubscriber(Node):
             self.pose_graph.add_pose(
                 transformation,
                 landmark=True,
-                color=new_landmarks.colors[i],
+                # color=new_landmarks.colors[i],
             )
 
         self.pose_graph.previous_frame = cone_coordinates
@@ -116,17 +122,6 @@ class PointCloudSubscriber(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = PointCloudSubscriber()
-
-    # import fake_scenes
-
-    # dataset = fake_scenes.load_relative_frames(
-    #     "/home/kphahn/University/dv-localization/Datasets/track_1"
-    # )
-
-    # for i in range(3):
-    #     for idx, frame in enumerate(dataset):
-    #         node.listener_callback(frame, idx)
-
     rclpy.spin(node)
     rclpy.shutdown()
 

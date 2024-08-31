@@ -100,7 +100,7 @@ def _correct_frame(frame, transform):
     T = np.eye(4)
     T[:3, :3] = o3d.geometry.PointCloud.get_rotation_matrix_from_axis_angle(
         [
-            transform["rot_x"],
+            0,  # transform["rot_x"],
             transform["rot_y"],
             transform["rot_z"],
         ]
@@ -115,15 +115,21 @@ def _load_dataset(
     dataset_path,
     divider=1,
     noise=False,
-    limit=None,
+    start=None,
+    end=None,
     perspective="local",
 ):
 
+    frame_count = int(len(os.listdir(f"{dataset_path}/pointclouds")) / 2)
+
+    start = start if start is not None else 0
+    end = end if end is not None else frame_count
+
     dataset_name = dataset_path.rstrip("/").rsplit("/", 1)[1]
 
-    limit = limit if limit else int(len(os.listdir(f"{dataset_path}/pointclouds")) / 2)
-
-    print(f"Loading Dataset track_{dataset_name} with {limit} pointcloud(s). {noise=}")
+    print(
+        f"Loading Dataset track_{dataset_name} with {end - start} pointcloud(s). {noise=}"
+    )
 
     pcd_path = lambda i: f"{dataset_path}/pointclouds/cloud_frame_{i}.ply"
     tfm_path = lambda i: f"{dataset_path}/transformations/transformation_{i}.csv"
@@ -135,7 +141,7 @@ def _load_dataset(
     pointclouds = []
     labels = []
 
-    for idx in tqdm(range(0, limit, divider)):
+    for idx in tqdm(range(start, end, divider)):
 
         try:
             pointcloud = o3d.io.read_point_cloud(pcd_path(idx))
@@ -159,13 +165,15 @@ def load_relative_frames(
     dataset_path,
     divider=1,
     noise=False,
-    limit=None,
+    start=None,
+    end=None,
 ):
     pointclouds, labels = _load_dataset(
         dataset_path,
         divider=divider,
         noise=noise,
-        limit=limit,
+        start=start,
+        end=end,
         perspective="local",
     )
 
