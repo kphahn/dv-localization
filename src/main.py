@@ -7,6 +7,12 @@ import utils
 import slam
 import pcd
 
+# track_0 = 0.332
+# track_1 = 0.347
+# track_s42 = 0.467
+
+AVG_DISTANCE = 0.347
+
 
 def update_view(vis, pcd, frame):
     pcd.points = frame.points
@@ -50,6 +56,11 @@ if __name__ == "__main__":
     # CREATE POSE GRAPH
     pose_graph = slam.PoseGraph()
     odometry = np.eye(4)
+    is_moving = False
+
+    relevant_points = []
+
+    mapping_in_progress = True
 
     for glob in range(100):
 
@@ -59,92 +70,126 @@ if __name__ == "__main__":
 
             print(f"Processing frame: {idx}")
 
+            # ESTIMATE INITIAL MOVEMENT
+            if idx > 0 and is_moving == False:
+                odometry[1, 3] = AVG_DISTANCE * idx
+                is_moving = True
+
+            # OPTIMIZE POSE GRAPH
+            if (
+                idx == 0
+                and pose_graph.previous_frame is not None
+                and mapping_in_progress is True
+            ):
+
+                print("Mapping complete")
+
+                mapping_in_progress = False
+
+                # OPTIMIZE POSE GRAPH
+                pose = o3d.geometry.TriangleMesh.create_coordinate_frame()
+                pose.transform(pose_graph.current_pose)
+                utils.draw([pose_graph.get_map(), pose_graph.get_path(), pose])
+
+                option = o3d.pipelines.registration.GlobalOptimizationOption(
+                    max_correspondence_distance=0.5,
+                    edge_prune_threshold=0.25,
+                    reference_node=0,
+                )
+
+                o3d.pipelines.registration.global_optimization(
+                    pose_graph,
+                    o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
+                    o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(),
+                    option,
+                )
+
+                pose = o3d.geometry.TriangleMesh.create_coordinate_frame()
+                pose.transform(pose_graph.current_pose)
+                utils.draw([pose_graph.get_map(), pose])
+
             # PREPROCESS FRAME
             frame_processed = pcd.preprocess_frame(frame)
-            frame_without_ground = pcd.remove_ground(frame_processed, 2)
+            frame_without_ground = pcd.remove_ground(frame, 0)
             clusters = pcd.extract_clusters(frame_without_ground, 10)
-            cones = pcd.filter_clusters(clusters)
-            cone_coordinates = pcd.get_cone_coordinates(cones)
+            cone_coordinates = o3d.geometry.PointCloud(
+                o3d.utility.Vector3dVector(pcd.detect_cones_by_size(clusters))
+            )
 
-            # PROCESS COORDINATES
-            known_landmarks = []
-
+            # ESTIMATE MOTION
             odometry = slam.estimate_odometry(
                 cone_coordinates,
                 pose_graph.previous_frame,
                 odometry,
             )
 
-            pose_graph.add_pose(odometry)
+            pose_graph.previous_frame = cone_coordinates
 
             # ASSOCIATE LANDMARKS
-            correspondence_set = slam.associate_landmarks(
+            correspondence_set, estimated_pose = slam.associate_landmarks(
                 cone_coordinates,
                 pose_graph.get_map(),
-                pose_graph.current_pose,
+                pose_graph.current_pose @ odometry,
             )
 
-            # REGISTER LOOP CLOSURES
-            for frame_idx, map_idx in correspondence_set:
-                landmark_idx = pose_graph.idxs_landmarks[map_idx]
+            pose_graph.current_pose = estimated_pose
 
-                transformation = np.eye(4)
-                transformation[:3, 3] = cone_coordinates.points[frame_idx]
+            # UPDATE POSE GRAPH
+            if mapping_in_progress:
 
-                # ignore rotational information for landmark edges
-                information = np.eye(6)
-                information[:3, :3] = 0
+                # register loop closure
+                pose_graph.add_pose(odometry)
 
-                # if pose_graph.map.colors[map_idx][1] == 0.3:
-                #     color = np.asarray([1, 0, 0])
-                # else:
-                #     color = np.asarray([0, 0, 0])
+                known_landmarks = []
+                for frame_idx, map_idx in correspondence_set:
+                    landmark_idx = pose_graph.idxs_landmarks[map_idx]
 
-                pose_graph.add_edge(
-                    pose_graph.idxs_poses[-1],
-                    landmark_idx,
-                    transformation,
-                    False,
-                    information=information,
+                    transformation = np.eye(4)
+                    transformation[:3, 3] = cone_coordinates.points[frame_idx]
+
+                    # ignore rotational information for landmark edges
+                    information = np.eye(6)
+                    information[:3, :3] = 0
+
+                    # if pose_graph.map.colors[map_idx][1] == 0.3:
+                    #     color = np.asarray([1, 0, 0])
+                    # else:
+                    #     color = np.asarray([0, 0, 0])
+
+                    pose_graph.add_edge(
+                        pose_graph.idxs_poses[-1],
+                        landmark_idx,
+                        transformation,
+                        False,
+                        information=information,
+                    )
+
+                    known_landmarks.append(frame_idx)
+
+                # add new landmarks
+                new_landmarks = cone_coordinates.select_by_index(
+                    known_landmarks, invert=True
                 )
 
-                known_landmarks.append(frame_idx)
+                for i in range(len(new_landmarks.points)):
+                    transformation = np.eye(4)
+                    transformation[:3, 3] = new_landmarks.points[i]
 
-            # ADD NEW LANDMARKS
-            new_landmarks = cone_coordinates.select_by_index(
-                known_landmarks, invert=True
-            )
+                    pose_graph.add_pose(
+                        transformation,
+                        landmark=True,
+                        # color=new_landmarks.colors[i],
+                    )
 
-            for i in range(len(new_landmarks.points)):
-                transformation = np.eye(4)
-                transformation[:3, 3] = new_landmarks.points[i]
-
-                pose_graph.add_pose(
-                    transformation,
-                    landmark=True,
-                    # color=new_landmarks.colors[i],
-                )
-
+            #
+            #
+            #
+            #
+            # DEBUG
             p = pose_graph.current_pose[:3, 3]
             pc = o3d.geometry.PointCloud()
             pc.points.append(p)
 
             update_view(vis, view, pose_graph.get_map() + pc)
-
-            pose_graph.previous_frame = cone_coordinates
-
-        # OPTIMIZE POSE GRAPH
-        pose = o3d.geometry.TriangleMesh.create_coordinate_frame()
-        pose.transform(pose_graph.current_pose)
-        utils.draw([pose_graph.get_map(), pose_graph.get_path(), pose])
-
-        pose_graph, previous_path = slam.optimize_pose_graph(pose_graph)
-
-        # odometry = np.eye(4)
-        # pose_graph.previous_frame = None
-
-        pose = o3d.geometry.TriangleMesh.create_coordinate_frame()
-        pose.transform(pose_graph.current_pose)
-        utils.draw([pose_graph.get_map(), pose])
 
     print("Program finished")

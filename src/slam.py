@@ -17,7 +17,7 @@ def associate_landmarks(
         initial_transform,
     )
 
-    return icp_result.correspondence_set
+    return icp_result.correspondence_set, icp_result.transformation
 
 
 def estimate_odometry(
@@ -37,59 +37,6 @@ def estimate_odometry(
     )
 
     return icp_result.transformation
-
-
-def optimize_pose_graph(pose_graph):
-
-    option = o3d.pipelines.registration.GlobalOptimizationOption(
-        max_correspondence_distance=0.5,
-        edge_prune_threshold=0.25,
-        reference_node=0,
-    )
-
-    o3d.pipelines.registration.global_optimization(
-        pose_graph,
-        o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
-        o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(),
-        option,
-    )
-
-    current_map = pose_graph.get_map()
-    labels = np.array(
-        current_map.cluster_dbscan(
-            eps=0.5,
-            min_points=1,
-        )
-    )
-    max_label = labels.max()
-
-    clusters = [
-        current_map.select_by_index(np.where(labels == i)[0])
-        for i in range(max_label + 1)
-    ]
-
-    # new_pose_graph = PoseGraph(np.eye(4))
-    new_pose_graph = PoseGraph(pose_graph.current_pose)
-    new_pose_graph.previous_frame = pose_graph.previous_frame
-
-    centers = o3d.utility.Vector3dVector([cluster.get_center() for cluster in clusters])
-    for center in centers:
-        center[2] = 0
-        position = np.eye(4)
-        position[:3, 3] = center
-
-        new_pose_graph.nodes.append(o3d.pipelines.registration.PoseGraphNode(position))
-        new_pose_graph.idxs_landmarks.append(len(new_pose_graph.nodes) - 1)
-
-        new_pose_graph.lines.points.append(np.asarray(position[:3, 3]))
-
-        new_pose_graph.map.points.append(position[:3, 3])
-        # new_pose_graph.map.colors.append(np.asarray([0, 0, 0]))
-
-    color = utils.generate_colors(1)[0]
-    previous_path = pose_graph.get_path().paint_uniform_color(np.asarray(color))
-
-    return new_pose_graph, previous_path
 
 
 class PoseGraph(o3d.pipelines.registration.PoseGraph):
