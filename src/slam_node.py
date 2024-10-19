@@ -25,8 +25,11 @@ class PointCloudSubscriber(Node):
         self.pose_graph = slam.PoseGraph()
         self.odometry = np.eye(4)
         self.frame_count = None
+        self.first_frame_received = None
         self.is_moving = False
-        self.mapping_in_progress = True
+        self.mapping_complete = False
+
+        self.distances = []
 
         self.publisher_loc_ = self.create_publisher(ChannelFloat32, "loc_topic", 10)
         self.publisher_odo_ = self.create_publisher(ChannelFloat32, "odo_topic", 10)
@@ -35,7 +38,11 @@ class PointCloudSubscriber(Node):
     def listener_callback(self, msg):
 
         self.frame_count = int(msg.header.frame_id)
+        if self.first_frame_received is None:
+            self.first_frame_received = int(msg.header.frame_id)
+
         self.get_logger().info(f"Received frame {self.frame_count}")
+        self.get_logger().info(f"first frame {self.first_frame_received}")
 
         frame = utils.convert_ros_to_o3d(self, msg)
 
@@ -44,16 +51,38 @@ class PointCloudSubscriber(Node):
             self.odometry[1, 3] = AVG_DISTANCE * self.frame_count
             self.is_moving = True
 
+        # optimize pose graph after 225m
+        translation = self.odometry[:3, 3]
+        self.distance = np.linalg.norm(translation)
+        self.distances.append(self.distance)
+
+        # OPTIMIZE POSE GRAPH AFTER 225M
+        if sum(self.distances) % 225 < 0.5 and sum(self.distances) != 0:
+            print("distance: ", sum(self.distances))
+            # OPTIMIZE POSE GRAPH
+            option = o3d.pipelines.registration.GlobalOptimizationOption(
+                max_correspondence_distance=0.5,
+                edge_prune_threshold=0.25,
+                reference_node=0,
+            )
+
+            o3d.pipelines.registration.global_optimization(
+                self.pose_graph,
+                o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
+                o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(),
+                option,
+            )
+
         # FINISH FIRST LAP
         if (
-            self.frame_count == 0
+            self.frame_count == self.first_frame_received
             and self.pose_graph.previous_frame is not None
-            and self.mapping_in_progress is True
+            and self.mapping_complete is False
         ):
 
-            print("Mapping complete")
+            self.get_logger().info(f"Mapping complete")
 
-            self.mapping_in_progress = False
+            self.mapping_complete = True
 
             # OPTIMIZE POSE GRAPH
             option = o3d.pipelines.registration.GlobalOptimizationOption(
@@ -93,9 +122,11 @@ class PointCloudSubscriber(Node):
             self.pose_graph.current_pose @ self.odometry,
         )
 
-        self.pose_graph.current_pose = estimated_pose
+        # UPDATE POSE GRAPH
+        if self.mapping_complete:
+            self.pose_graph.current_pose = estimated_pose
 
-        if self.mapping_in_progress:
+        else:
             self.update_pose_graph(cone_coordinates, correspondence_set)
 
         # PUBLISH CURRENT STATE
@@ -114,7 +145,8 @@ class PointCloudSubscriber(Node):
     def update_pose_graph(self, cone_coordinates, correspondence_set):
 
         # register loop closures
-        self.pose_graph.add_pose(self.odometry)
+        if not np.array_equal(self.odometry, np.eye(4)):
+            self.pose_graph.add_pose(self.odometry)
 
         known_landmarks = []
         for frame_idx, map_idx in correspondence_set:

@@ -12,7 +12,7 @@ class PointCloudPublisher(Node):
     def __init__(self, dataset, divider=1):
         super().__init__("publisher_node")
         self.publisher_ = self.create_publisher(PointCloud2, "pointcloud_topic", 10)
-        self.timer = self.create_timer(0.1, self.publish_pointcloud)
+        self.timer = self.create_timer(0.2, self.publish_pointcloud)
         self.dataset = dataset
         self.divider = divider
         self.frame_count = 0

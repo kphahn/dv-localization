@@ -127,9 +127,7 @@ def _load_dataset(
 
     dataset_name = dataset_path.rstrip("/").rsplit("/", 1)[1]
 
-    print(
-        f"Loading Dataset track_{dataset_name} with {end - start} pointcloud(s). {noise=}"
-    )
+    print(f"Loading Dataset {dataset_name} with {end - start} pointcloud(s). {noise=}")
 
     pcd_path = lambda i: f"{dataset_path}/pointclouds/cloud_frame_{i}.ply"
     tfm_path = lambda i: f"{dataset_path}/transformations/transformation_{i}.csv"
@@ -186,7 +184,8 @@ def load_ground_truth(dataset_path):
         dataset_path=dataset_path,
         divider=1,
         noise=False,
-        limit=None,
+        start=0,
+        end=1,
         perspective="global",
     )
 

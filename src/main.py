@@ -3,15 +3,26 @@ import numpy as np
 from argparse import ArgumentParser
 
 import fake_scenes
-import utils
 import slam
 import pcd
 
-# track_0 = 0.332
-# track_1 = 0.347
-# track_s42 = 0.467
 
-AVG_DISTANCE = 0.347
+def get_initial_distance(dataset_name):
+
+    if dataset_name == "track_0_livox":
+        return 0.29364
+
+    elif dataset_name == "track_1_livox":
+        return 0.38553
+
+    elif dataset_name == "track_s42_livox":
+        return 0.55665
+
+    return 0
+
+
+vis = o3d.visualization.Visualizer()
+view = o3d.geometry.PointCloud()
 
 
 def update_view(vis, pcd, frame):
@@ -34,6 +45,12 @@ if __name__ == "__main__":
         help="Use frames with noise",
     )
     parser.add_argument(
+        "-v",
+        "--visualize",
+        default=False,
+        help="Dynamically visualize the build-up of the map",
+    )
+    parser.add_argument(
         "dataset_path",
         type=str,
         help="Path to track dataset",
@@ -41,12 +58,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     DATASET_PATH = args.dataset_path
+    VISUALIZATION = args.visualize
 
-    vis = o3d.visualization.Visualizer()
-    vis.create_window(width=1500, height=1500)
+    dataset_name = DATASET_PATH.rstrip("/").rsplit("/", 1)[1]
+    initial_dist = get_initial_distance(dataset_name)
 
-    view = o3d.geometry.PointCloud()
-    vis.add_geometry(view)
+    if VISUALIZATION:
+        vis.create_window(width=1500, height=1500)
+        vis.add_geometry(view)
 
     # load dataset
     lidar_dataset = fake_scenes.load_relative_frames(
@@ -55,42 +74,32 @@ if __name__ == "__main__":
 
     # CREATE POSE GRAPH
     pose_graph = slam.PoseGraph()
-    odometry = np.eye(4)
     is_moving = False
+    mapping_complete = False
+    odometry = np.eye(4)
 
-    relevant_points = []
+    distances = []
 
-    mapping_in_progress = True
-
-    for glob in range(100):
-
+    for run in range(5):
         for idx in range(0, len(lidar_dataset)):
 
             frame = lidar_dataset[idx]
 
             print(f"Processing frame: {idx}")
 
-            # ESTIMATE INITIAL MOVEMENT
-            if idx > 0 and is_moving == False:
-                odometry[1, 3] = AVG_DISTANCE * idx
-                is_moving = True
-
             # OPTIMIZE POSE GRAPH
             if (
                 idx == 0
                 and pose_graph.previous_frame is not None
-                and mapping_in_progress is True
+                and mapping_complete is False
             ):
 
                 print("Mapping complete")
 
-                mapping_in_progress = False
+                mapping_complete = True
+                is_moving = False  # allow odometry adjustment for larger distance from last to first frame
 
                 # OPTIMIZE POSE GRAPH
-                pose = o3d.geometry.TriangleMesh.create_coordinate_frame()
-                pose.transform(pose_graph.current_pose)
-                utils.draw([pose_graph.get_map(), pose_graph.get_path(), pose])
-
                 option = o3d.pipelines.registration.GlobalOptimizationOption(
                     max_correspondence_distance=0.5,
                     edge_prune_threshold=0.25,
@@ -104,10 +113,6 @@ if __name__ == "__main__":
                     option,
                 )
 
-                pose = o3d.geometry.TriangleMesh.create_coordinate_frame()
-                pose.transform(pose_graph.current_pose)
-                utils.draw([pose_graph.get_map(), pose])
-
             # PREPROCESS FRAME
             frame_processed = pcd.preprocess_frame(frame)
             frame_without_ground = pcd.remove_ground(frame, 0)
@@ -117,6 +122,12 @@ if __name__ == "__main__":
             )
 
             # ESTIMATE MOTION
+            # initial movment
+            if idx > 0 and is_moving == False:
+                odometry = np.eye(4)
+                odometry[1, 3] = initial_dist * idx
+                is_moving = True
+
             odometry = slam.estimate_odometry(
                 cone_coordinates,
                 pose_graph.previous_frame,
@@ -132,14 +143,16 @@ if __name__ == "__main__":
                 pose_graph.current_pose @ odometry,
             )
 
-            pose_graph.current_pose = estimated_pose
-
             # UPDATE POSE GRAPH
-            if mapping_in_progress:
+            if mapping_complete:
+                pose_graph.current_pose = estimated_pose
+
+            else:
+
+                if not np.array_equal(odometry, np.eye(4)):
+                    pose_graph.add_pose(odometry)
 
                 # register loop closure
-                pose_graph.add_pose(odometry)
-
                 known_landmarks = []
                 for frame_idx, map_idx in correspondence_set:
                     landmark_idx = pose_graph.idxs_landmarks[map_idx]
@@ -150,11 +163,6 @@ if __name__ == "__main__":
                     # ignore rotational information for landmark edges
                     information = np.eye(6)
                     information[:3, :3] = 0
-
-                    # if pose_graph.map.colors[map_idx][1] == 0.3:
-                    #     color = np.asarray([1, 0, 0])
-                    # else:
-                    #     color = np.asarray([0, 0, 0])
 
                     pose_graph.add_edge(
                         pose_graph.idxs_poses[-1],
@@ -178,18 +186,51 @@ if __name__ == "__main__":
                     pose_graph.add_pose(
                         transformation,
                         landmark=True,
-                        # color=new_landmarks.colors[i],
                     )
 
-            #
-            #
-            #
-            #
-            # DEBUG
-            p = pose_graph.current_pose[:3, 3]
-            pc = o3d.geometry.PointCloud()
-            pc.points.append(p)
+                # close lap
+                if idx == len(lidar_dataset) - 1:
+                    odometry = slam.estimate_odometry(
+                        lidar_dataset[0],
+                        cone_coordinates,
+                        odometry,
+                    )
 
-            update_view(vis, view, pose_graph.get_map() + pc)
+                    pose_graph.add_edge(
+                        pose_graph.idxs_poses[-1],
+                        pose_graph.idxs_poses[0],
+                        odometry,
+                        False,
+                    )
 
-    print("Program finished")
+            # optimize pose graph after 225m
+            translation = odometry[:3, 3]
+            distance = np.linalg.norm(translation)
+            distances.append(distance)
+            sum_distances = sum(distances)
+
+            if sum_distances % 225 < 0.5 and sum_distances != 0 and sum_distances < 226:
+                print("distance: ", sum(distances))
+
+                option = o3d.pipelines.registration.GlobalOptimizationOption(
+                    max_correspondence_distance=0.5,
+                    edge_prune_threshold=0.25,
+                    reference_node=0,
+                )
+
+                o3d.pipelines.registration.global_optimization(
+                    pose_graph,
+                    o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
+                    o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(),
+                    option,
+                )
+
+            # VISUALIZATION
+            if VISUALIZATION:
+                p = pose_graph.current_pose[:3, 3]
+                pc = o3d.geometry.PointCloud()
+                pc.points.append(p)
+
+                update_view(vis, view, pose_graph.get_map() + pc)
+
+print("Program finished")
