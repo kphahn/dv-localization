@@ -29,7 +29,7 @@ def update_view(vis, pcd, frame):
     pcd.points = frame.points
 
     vis.update_geometry(pcd)
-    vis.reset_view_point(True)
+    # vis.reset_view_point(True)
     vis.poll_events()
     vis.update_renderer()
 
