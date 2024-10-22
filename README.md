@@ -6,6 +6,6 @@ Bachelor Thesis Project
 
 This project is under development. Dependencies and source code may change a lot.
 Current dependencies:
-- Python3.11
+- Python3.10
     - packages listed in `requirements.txt`
 - Datasets generated with [fakeScenes](https://github.com/Chalmers-Formula-Student/fakeScenes)
