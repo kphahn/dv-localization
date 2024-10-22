@@ -5,6 +5,7 @@ from argparse import ArgumentParser
 import fake_scenes
 import slam
 import pcd
+import utils
 
 
 def get_initial_distance(dataset_name):
@@ -29,7 +30,7 @@ def update_view(vis, pcd, frame):
     pcd.points = frame.points
 
     vis.update_geometry(pcd)
-    # vis.reset_view_point(True)
+    vis.reset_view_point(True)
     vis.poll_events()
     vis.update_renderer()
 
@@ -112,6 +113,8 @@ if __name__ == "__main__":
                     o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(),
                     option,
                 )
+
+                utils.draw(pose_graph.get_map())
 
             # PREPROCESS FRAME
             frame_processed = pcd.preprocess_frame(frame)
